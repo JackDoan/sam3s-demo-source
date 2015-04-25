@@ -1,7 +1,12 @@
 
-cl2000 -ml -mt -g --include_path="./include" --include_path="./" --define="_DEBUG" --define="LARGE_MODEL"--verbose_diagnostics --diag_warning=225 --output_all_syms --cdebug_asm_data -fe ".main.obj" "main.c"
+cl2000 -ml -mt -g --include_path="./include" --include_path="./" --define="_DEBUG" --define="LARGE_MODEL"= --verbose_diagnostics --diag_warning=225 --output_all_syms --cdebug_asm_data "main.c"
 
-cl2000 -ml -mt -g --define="_DEBUG" --define="LARGE_MODEL" --verbose_diagnostics --diag_warning=225 --output_all_syms --cdebug_asm_data --run_linker --stack_size=0x200 --warn_sections -i"./libc" -i"./include" -i"./common/lib" --reread_libs --verbose_diagnostics --entry_point=code_start --rom_model -o "a.out" "./.main.obj" -l"./common/cmd/nonBIOS.cmd" -l"./common/lib/driverlib.lib" -l"./common/cmd/F28027.cmd" -l"rts2800_ml.lib" -l"IQmath.lib"
+cl2000 -ml -mt -g --define="_DEBUG" --define="LARGE_MODEL" --verbose_diagnostics --diag_warning=225 --output_all_syms --cdebug_asm_data --run_linker --stack_size=0x200 --warn_sections -i"./libc" -i"./include" -i"./f2802x_common/lib" --reread_libs --verbose_diagnostics --entry_point=code_start --rom_model -o "a.out" "./main.obj" -l"./f2802x_common/cmd/nonBIOS.cmd" -l"./f2802x_common/cmd/F28027.cmd" -l"rts2800_ml.lib" -l"IQmath.lib" -l"./f2802x_common/lib/driverlib.lib"
+
+rm main.obj
+#rm epwm.obj
+#rm gpio.obj
+#rm sysctrl.obj
 
 echo Press ^C to stop or ENTER to flash
 read books
