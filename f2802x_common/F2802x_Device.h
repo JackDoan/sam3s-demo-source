@@ -138,13 +138,16 @@ typedef long double     float64;
 #include "./include/F2802x_DevEmu.h"             // Device Emulation Registers
 #include "./include/F2802x_Comp.h"               // Comparator Registers
 #include "./include/F2802x_CpuTimers.h"          // 32-bit CPU Timers
-#include "./include/F2802x_ECap.h"               // Enhanced Capture
+#include "./include/F2802x_ECap.h"
+#include "./include/F2802x_EPwm.h"               // Enhanced Capture
+#include "./include/F2802x_Gpio.h"
 #include "./include/F2802x_I2c.h"                // I2C Registers
 #include "./include/F2802x_NmiIntrupt.h"         // NMI Interrupt Registers
 #include "./include/F2802x_PieCtrl.h"            // PIE Control Registers
 #include "./include/F2802x_PieVect.h"            // PIE Vector Table
 #include "./include/F2802x_Spi.h"                // SPI Registers
 #include "./include/F2802x_Sci.h"                // SCI Registers
+#include "./include/F2802x_SysCtrl.h"
 #include "./include/F2802x_XIntrupt.h"           // External Interrupts
 
 #if (DSP28_28020PT||DSP28_28021PT||DSP28_28022PT||DSP28_28023PT||DSP28_28026PT||DSP28_28027PT)
