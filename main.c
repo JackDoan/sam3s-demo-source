@@ -4,6 +4,10 @@
 #include <stdio.h>
 #include "f2802x_common/F2802x_Device.h"
 
+void doPwmMenu(void);
+void doAdcMenu(void);
+void doGpioMenu(void);
+void printMenu(char** menu, int size);
 void scia_echoback_init(void);
 void scia_fifo_init(void);
 void scia_xmit(int a);
@@ -14,6 +18,24 @@ void scia_Byte2Hex( Uint16 byte );
 void scia_Byte2Decimal( Uint16 byte );
 void scia_PrintLF( void );
 Uint16 scia_read(void);
+char clearScreen[] = "\033[2J\033[0;0H";
+char menuDivider[] = "-----------------------------------------";
+char menuGoBack[] = "0) Go Back\r\n";
+char nope[] = "That's not a number. Press any key to continue.";
+int read = 0;
+
+char gpioString1[] = "\n GPIO Menu";
+char gpioString2[] = "Press the indicated keys to toggle the LEDs:\r\n";
+char gpioString3[] = "1) LED0: OFF\r\n2) LED1: OFF\r\n3) LED2: OFF\r\n4) LED3: OFF";
+char* gpioMenu[5] = {gpioString1, menuDivider, gpioString2, gpioString3, menuGoBack};
+
+bool gpioStatus0 = 0;
+bool gpioStatus1 = 0;
+bool gpioStatus2 = 0;
+bool gpioStatus3 = 0;
+
+
+//char gpioString3[] = "1) LED0: OFF\r\n2) LED1: OFF\r\n3) LED2: OFF\r\n4) LED3: OFF";
 
 void main()
 {
@@ -32,34 +54,123 @@ void main()
   //scia_fifo_init();
   scia_echoback_init();
   EDIS;
-  char nope[] = "That's not a number.\r\n";
-  char prompt[] = "Wanna turn an LED on? (0,1,2,3) ";
-  int read = 0;
-  //char toPrint[8] = {'P','o','t','a','t','o','\n','\0'};
+  char menuString1[] = "\nF28027 Main Menu";
+  char menuString2[] = "1) PWM";
+  char menuString3[] = "2) ADC";
+  char menuString4[] = "3) GPIO\r\n";
+  char menuGoBack[] = "0) Go Back\r\n"; 
+  char* mainMenu[5] = {menuString1, menuDivider, menuString2, menuString3, menuString4};
+  
+  char pwmString1[] = "\nPWM Setup Menu (outputs on GPIO 0-3)";
+  char pwmString2[] = "1) Enable PWM";
+  char pwmString3[] = "2) Duty Cycle";
+  char pwmString4[] = "3) Frequency\r\n";
+  char* pwmMenu[6] = {pwmString1, menuDivider, pwmString2, pwmString3, pwmString4, menuGoBack};
+  
   while(1) {
-	scia_msg(prompt);
+	scia_msg(clearScreen);
+        printMenu(mainMenu, 5);
 	read = scia_read();
-	scia_PrintLF();
+	switch (read) {
+		case 0x31:
+			doPwmMenu();
+			break;
+		case 0x32:
+			doAdcMenu();
+			break;
+		case 0x33:
+			doGpioMenu();
+			break;
+		default:
+			scia_msg(nope);
+			read = scia_read();
+			break;
+	}
+  }
+
+}
+
+void doAdcMenu(void) {
+	asm(" NOP");
+}
+
+void doPwmMenu(void) {
+	asm(" NOP");
+}
+
+void doGpioMenu(void) {
+  bool breakOutOfLoop = 0;
+  while(breakOutOfLoop == 0) {
+	scia_msg(clearScreen);
+	printMenu(gpioMenu, 5);
+	read = scia_read();
 	switch (read) {
 		case 0x30:
-			GpioDataRegs.GPATOGGLE.all = 0x0001;
+			breakOutOfLoop = 1;
 			break;
 		case 0x31:
-                        GpioDataRegs.GPATOGGLE.all = 0x0002;
-                        break;
+			GpioDataRegs.GPATOGGLE.all = 0x0001;
+			if (gpioStatus0 == 0) {
+				gpioString3[10] = 'N';
+				gpioString3[11] = ' ';
+			}
+			else {
+				gpioString3[10] = 'F';
+                                gpioString3[11] = 'F';
+			}
+			gpioStatus0 = !gpioStatus0;
+			break;
 		case 0x32:
-                        GpioDataRegs.GPATOGGLE.all = 0x0004;
-                        break;
+                        GpioDataRegs.GPATOGGLE.all = 0x0002;
+                        if (gpioStatus1 == 0) {
+                                gpioString3[24] = 'N';
+                                gpioString3[25] = ' ';
+                        }
+                        else {
+                                gpioString3[24] = 'F';
+                                gpioString3[25] = 'F';
+                        }
+                        gpioStatus1 = !gpioStatus1;
+			break;
 		case 0x33:
+                        GpioDataRegs.GPATOGGLE.all = 0x0004;
+                        if (gpioStatus2 == 0) {
+                                gpioString3[38] = 'N';
+                                gpioString3[39] = ' ';
+                        }
+                        else {
+                                gpioString3[38] = 'F';
+                                gpioString3[39] = 'F';
+                        }
+                        gpioStatus2 = !gpioStatus2;
+			break;
+		case 0x34:
                         GpioDataRegs.GPATOGGLE.all = 0x0008;
-                        break;
+                        if (gpioStatus3 == 0) {
+                                gpioString3[52] = 'N';
+                                gpioString3[53] = ' ';
+                        }
+                        else {
+                                gpioString3[52] = 'F';
+                                gpioString3[53] = 'F';
+                        }
+                        gpioStatus3 = !gpioStatus3;
+			break;
 		default:
 			scia_msg(nope);
 			break;
 	}
-	scia_xmit(read);
-	scia_PrintLF();
   }
+  return;
+}
+
+void printMenu(char** menu, int size) {
+	int i = 0;
+	while (i <= size) {
+		scia_msg(menu[i]);
+		scia_PrintLF();
+		i++;
+	}
 
 }
 
