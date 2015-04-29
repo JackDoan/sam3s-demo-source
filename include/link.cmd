@@ -17,6 +17,11 @@
 "./include/sysctrl.obj"
 "./include/epwm.obj"
 "./include/globals.obj"
+"./include/adc.obj"
+"./include/sci.obj"
+"./include/piecontrol.obj"
+"./include/pievect.obj"
+"./include/default_isr.obj"
 /*"./include/F2802x_CSMPasswords.obj"
 "./include/F2802x_CodeStartBranch.obj"*/
 "./include/F2802x_asmfuncs.obj"

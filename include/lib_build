@@ -1,1 +1,0 @@
-cl2000 -ml -mt -g --include_path="./include" --include_path="./" --define="_DEBUG" --define="LARGE_MODEL"= --verbose_diagnostics --diag_warning=225 --output_all_syms --cdebug_asm_data $1
