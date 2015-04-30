@@ -2,13 +2,15 @@
  * uart.c
  */
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include "f2802x_common/F2802x_Device.h"
-
+void epwmInit(void);
 void doPwmMenu(void);
 void doAdcMenu(void);
 void doGpioMenu(void);
 void printMenu(char** menu, int size);
-void scia_echoback_init(void);
+void scia_init(void);
 void scia_fifo_init(void);
 void scia_xmit(int a);
 void scia_msg(char *msg);
@@ -20,9 +22,17 @@ void scia_PrintLF( void );
 Uint16 scia_read(void);
 char clearScreen[] = "\033[2J\033[0;0H";
 char menuDivider[] = "-----------------------------------------";
-char menuGoBack[] = "0) Go Back\r\n";
+char menuGoBack[] = "\r\n0) Go Back\r\n";
 char nope[] = "That's not a number. Press any key to continue.";
 int read = 0;
+
+
+char pwmString1[] = "\nPWM Menu (outputs on GPIO 0-3)";
+char pwmString2[] = "1) Toggle PWM:           OFF ";
+char pwmString3[] = "2) Duty Cycle:           50% ";
+char pwmString4[] = "3) Frequency :      10000 Hz ";
+char pwm_is_kill[] = "PWM is not enabled. Please try again.";
+char* pwmMenu[6] = {pwmString1, menuDivider, pwmString2, pwmString3, pwmString4, menuGoBack};
 
 char gpioString1[] = "\n GPIO Menu";
 char gpioString2[] = "Press the indicated keys to toggle the LEDs:\r\n";
@@ -51,21 +61,13 @@ void main()
   GpioCtrlRegs.AIOMUX1.all = 0x0000;
   GpioDataRegs.GPASET.all = 0xFFFF;
   GpioCtrlRegs.GPADIR.all = 0xFFFF;
-  //scia_fifo_init();
-  scia_echoback_init();
+  scia_init();
   EDIS;
   char menuString1[] = "\nF28027 Main Menu";
   char menuString2[] = "1) PWM";
   char menuString3[] = "2) ADC";
-  char menuString4[] = "3) GPIO\r\n";
-  char menuGoBack[] = "0) Go Back\r\n"; 
+  char menuString4[] = "3) GPIO";
   char* mainMenu[5] = {menuString1, menuDivider, menuString2, menuString3, menuString4};
-  
-  char pwmString1[] = "\nPWM Setup Menu (outputs on GPIO 0-3)";
-  char pwmString2[] = "1) Enable PWM";
-  char pwmString3[] = "2) Duty Cycle";
-  char pwmString4[] = "3) Frequency\r\n";
-  char* pwmMenu[6] = {pwmString1, menuDivider, pwmString2, pwmString3, pwmString4, menuGoBack};
   
   while(1) {
 	scia_msg(clearScreen);
@@ -91,11 +93,95 @@ void main()
 }
 
 void doAdcMenu(void) {
-	asm(" NOP");
+	bool breakOutOfLoop = 0;
+  	while(breakOutOfLoop == 0) {
+		scia_msg(clearScreen);
+	       // printMenu(pwmMenu, 6);
+		read = scia_read();
+		switch (read) {
+                	case 0x30:
+                        	breakOutOfLoop = 1;
+                        	break;
+		}
+	}
 }
-
+int pwmStatus = 0;
 void doPwmMenu(void) {
-	asm(" NOP");
+	int dutyCycleMult = 2;
+	int epwmFreq = 1500;
+	bool breakOutOfLoop = 0;
+        while(breakOutOfLoop == 0) {
+                scia_msg(clearScreen);
+                printMenu(pwmMenu, 6);
+                read = scia_read();
+                switch (read) {
+                        case 0x30: //go back
+                                breakOutOfLoop = 1;
+                                break;
+			case 0x31: //enable/disable pwm
+				if (pwmStatus == 0) {
+					epwmInit();
+					pwmStatus = 1;
+               				//pwmString2[] = "1) Toggle PWM:           OFF";
+					pwmString2[25] = ' ';
+					pwmString2[26] = 'O';
+					pwmString2[27] = 'N';
+				}
+				else {
+					pwmStatus = 0;
+					EALLOW;
+					GpioCtrlRegs.GPADIR.all = 0xFFFF;
+					GpioCtrlRegs.GPAMUX1.all = 0x0000;
+  					GpioDataRegs.GPASET.all = 0xFFFF;
+					EDIS;
+					pwmString2[25] = 'O';
+                                        pwmString2[26] = 'F';
+                                        pwmString2[27] = 'F';
+				}
+				break;
+			case 0x32:
+				if (pwmStatus == 1) {
+				// prompt for duty cycle
+					char dutyCyclePrompt[] = "Enter the new duty cycle:";
+					int i = 0;
+					int mult = 10;
+					int newDutyCycleMult = 0;
+					scia_msg(dutyCyclePrompt);
+					while (i < 2) {
+						read = scia_read();
+						if (read < 0x3A || read > 0x2F) {
+							newDutyCycleMult = newDutyCycleMult + (mult*(read-48));
+							i++;
+							mult = mult - 9;
+						} 
+						else {
+							scia_msg(nope);
+							i = 0;
+							break;
+						}
+					}
+					if (i) {
+						i = ((epwmFreq/100)*newDutyCycleMult);
+						EPwm1Regs.CMPA.half.CMPA = (1500-i); // adjust duty for output EPWM1A
+       						EPwm2Regs.CMPA.half.CMPA = (1500-i);	
+					}
+				}
+				else {
+					scia_msg(pwm_is_kill);
+					read = scia_read();
+				}
+				break;
+			case 0x33:
+                                if (pwmStatus == 1) {
+                
+                                }
+                                else {
+                                        scia_msg(pwm_is_kill);
+					read = scia_read();
+                                }
+                                break;
+		}
+	}
 }
 
 void doGpioMenu(void) {
@@ -187,20 +273,10 @@ void scia_fifo_init(void)
 
 }
 
-/*
- * Test 1,SCIA  DLB, 8-bit word, baud rate 0x000F, default, 1 STOP bit, no parity
- */
-void scia_echoback_init(void)
+void scia_init(void)
 {
-        // For this example, only init the pins for the SCI-A port.
-        // This function is found in the DSP2802x_Sci.c file.
-        InitSciaGpio();
-
-        /* Init scia fifo. */
-        scia_fifo_init();
-
-    // Note: Clocks were turned on to the SCIA peripheral
-    // in the InitSysCtrl() function
+    InitSciaGpio();
+    scia_fifo_init();
 
     SciaRegs.SCICCR.all =0x0007;   // 1 stop bit,  No loopback
                                    // No parity,8 char bits,
@@ -211,11 +287,10 @@ void scia_echoback_init(void)
     SciaRegs.SCICTL2.bit.TXINTENA =1;
     SciaRegs.SCICTL2.bit.RXBKINTENA =1;
 
-    // SCI BRR = LSPCLK/(SCI BAUDx8) - 1
     SciaRegs.SCIHBAUD    =0x0000;  // 38400 baud @LSPCLK = 15MHz (60 MHz SYSCLK).
     SciaRegs.SCILBAUD    =0x0030;   // 38400 baud @LSPCLK = 15MHz (60 MHz SYSCLK).
 
-    SciaRegs.SCICTL1.all =0x0023;  // Relinquish SCI from Reset
+    SciaRegs.SCICTL1.all =0x0023;  // Release SCI from Reset
 }
 
 /*
@@ -228,9 +303,6 @@ void scia_xmit(int a)
 
 }
 
-/*
- * Print a string for debug or any purpose.
- */
 void scia_msg(char * msg)
 {
     int i;
@@ -284,47 +356,50 @@ void scia_PrintLF( void )
 {
         scia_msg("\r\n");
 }
-/***************************************************************************//**
- * @brief Converts a float value to a character array with 3 digits of accuracy.
- *
- * @param *buf - returns the converterd value
- * @param val - value to be converted
- *
- * @return None.
-*******************************************************************************/
-void FloatToString(char * buf, double val)
-{
-    long  intPart  = 0;
-    short fracPart = 0;
-    char  charPos  = 0;
-    char  localBuf[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    char  i = sizeof(localBuf) - 1;
 
-    intPart = (long)val;
-    fracPart = (short)((val - intPart) * 1000 + 0.5);
-    while(i > (sizeof(localBuf) - 4))
-    {
-        localBuf[i] = (fracPart % 10) + 0x30;
-        fracPart /= 10;
-        i--;
-    }
-    localBuf[i] = '.';
-    if(intPart == 0)
-    {
-        i --;
-        localBuf[i] = '0';
-    }
-    while(intPart)
-    {
-        i --;
-        localBuf[i] =(intPart % 10)  + 0x30;
-        intPart /= 10;
-    }
-    for(charPos = i; charPos < sizeof(localBuf); charPos ++)
-    {
-        *buf = localBuf[charPos];
-        buf ++;
-    }
-    *buf = 0;
+void epwmInit(void) {
+	//InitGpio();
+  	InitEPwmGpio();
+//	GpioCtrlRegs.GPADIR.bit.GPIO0 = 1;
+//	GpioCtrlRegs.GPADIR.bit.GPIO1 = 1;
+//	GpioCtrlRegs.GPADIR.bit.GPIO3 = 1;
+	// EPWM Module 1 config
+	EPwm1Regs.TBPRD = 1500; // Period = 1500 TBCLK counts
+	EPwm1Regs.TBPHS.half.TBPHS = 0; // Set Phase register to zero
+	EPwm1Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN; // Symmetrical mode
+	EPwm1Regs.TBCTL.bit.PHSEN = TB_DISABLE; // Master module
+	EPwm1Regs.TBCTL.bit.PRDLD = TB_SHADOW;
+	EPwm1Regs.TBCTL.bit.SYNCOSEL = TB_CTR_ZERO; // Sync down-stream module
+	EPwm1Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
+	EPwm1Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
+	EPwm1Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO; // load on CTR=Zero
+	EPwm1Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO; // load on CTR=Zero
+	EPwm1Regs.AQCTLA.bit.CAU = AQ_SET; // set actions for EPWM1A
+	EPwm1Regs.AQCTLA.bit.CAD = AQ_CLEAR;
+	EPwm1Regs.DBCTL.bit.OUT_MODE = DB_FULL_ENABLE; // enable Dead-band module
+	EPwm1Regs.DBCTL.bit.POLSEL = DB_ACTV_HIC; // Active Hi complementary
+	EPwm1Regs.DBFED = 20; // FED = 20 TBCLKs
+	EPwm1Regs.DBRED = 20; // RED = 20 TBCLKs
+	// EPWM Module 2 config
+	EPwm2Regs.TBPRD = 1500; // Period = 1500 TBCLK counts
+	EPwm2Regs.TBPHS.half.TBPHS = 300; // Phase = 300/1500 * 360 = 120 deg
+	EPwm2Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN; // Symmetrical mode
+	EPwm2Regs.TBCTL.bit.PHSEN = TB_ENABLE; // Slave module
+	EPwm2Regs.TBCTL.bit.PHSDIR = TB_DOWN; // Count DOWN on sync (=120 deg)
+	EPwm2Regs.TBCTL.bit.PRDLD = TB_SHADOW;
+	EPwm2Regs.TBCTL.bit.SYNCOSEL = TB_SYNC_IN; // sync flow-through
+	EPwm2Regs.CMPCTL.bit.SHDWAMODE = CC_SHADOW;
+	EPwm2Regs.CMPCTL.bit.SHDWBMODE = CC_SHADOW;
+	EPwm2Regs.CMPCTL.bit.LOADAMODE = CC_CTR_ZERO; // load on CTR=Zero
+	EPwm2Regs.CMPCTL.bit.LOADBMODE = CC_CTR_ZERO; // load on CTR=Zero
+	EPwm2Regs.AQCTLA.bit.CAU = AQ_SET; // set actions for EPWM2A
+	EPwm2Regs.AQCTLA.bit.CAD = AQ_CLEAR;
+	EPwm2Regs.DBCTL.bit.OUT_MODE = DB_FULL_ENABLE; // enable Dead-band module
+	EPwm2Regs.DBCTL.bit.POLSEL = DB_ACTV_HIC; // Active Hi Complementary
+	EPwm2Regs.DBFED = 20; // FED = 20 TBCLKs
+	EPwm2Regs.DBRED = 20; // RED = 20 TBCLKs
+
+	EPwm1Regs.CMPA.half.CMPA = (1500 / 2); // adjust duty for output EPWM1A
+	EPwm2Regs.CMPA.half.CMPA = (1500 / 2); // adjust duty for output EPWM2A
+	return;
 }
-//eof
