@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "f2802x_common/F2802x_Device.h"
-void epwmInit(void);
+void epwmInit(int freq, int duty);
 void doPwmMenu(void);
 void doAdcMenu(void);
 void doGpioMenu(void);
@@ -34,6 +34,11 @@ char pwmString4[] = "3) Frequency :      10000 Hz ";
 char pwm_is_kill[] = "PWM is not enabled. Please try again.";
 char* pwmMenu[6] = {pwmString1, menuDivider, pwmString2, pwmString3, pwmString4, menuGoBack};
 
+char adcString1[] = "\nADC Menu";
+char adcString2[] = "1) Begin conversion. Press any key to stop it\r\n   and return to the main menu.";
+char adcString3[] = "Current value: ";
+char* adcMenu[3] = {adcString1, menuDivider, adcString2};
+
 char gpioString1[] = "\n GPIO Menu";
 char gpioString2[] = "Press the indicated keys to toggle the LEDs:\r\n";
 char gpioString3[] = "1) LED0: OFF\r\n2) LED1: OFF\r\n3) LED2: OFF\r\n4) LED3: OFF";
@@ -59,9 +64,21 @@ void main()
   GpioCtrlRegs.GPAMUX2.all = 0x0000;
   GpioCtrlRegs.GPBMUX1.all = 0x0000;
   GpioCtrlRegs.AIOMUX1.all = 0x0000;
+  GpioCtrlRegs.AIODIR.all = 0x0000;
   GpioDataRegs.GPASET.all = 0xFFFF;
   GpioCtrlRegs.GPADIR.all = 0xFFFF;
   scia_init();
+  DINT;
+  InitPieCtrl();
+  //PieCtrlRegs.PIEIER1.bit.INTx7 = 1;
+  InitPieVectTable();
+  //PieVectTable.TINT0 = &cpu_timer0_isr;
+  IER |= M_INT1;
+  //InitCpuTimers();
+  //ConfigCpuTimer(&CpuTimer0, 60,500000);
+  //CpuTimer0Regs.TCR.bit.TSS = 0;              //CpuTimer0 Start/ReStart
+  EnableInterrupts();
+
   EDIS;
   char menuString1[] = "\nF28027 Main Menu";
   char menuString2[] = "1) PWM";
@@ -93,17 +110,68 @@ void main()
 }
 
 void doAdcMenu(void) {
-	bool breakOutOfLoop = 0;
-  	while(breakOutOfLoop == 0) {
+	Uint16 valueADC = 0;
+	char adcPrint[20] = {0};
+	EALLOW;
+	InitAdc();
+        //ConfigAdc();
+        InitAdcAio();
+        AdcOffsetSelfCal();
+        AdcChanSelect(4); //J1(6)
+	int ACQPS_Value = 6;
+	AdcRegs.ADCSOC0CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC1CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC2CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC3CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC4CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC5CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC6CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC7CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC8CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC9CTL.bit.ACQPS  = ACQPS_Value;
+	AdcRegs.ADCSOC10CTL.bit.ACQPS = ACQPS_Value;
+	AdcRegs.ADCSOC11CTL.bit.ACQPS = ACQPS_Value;
+	AdcRegs.ADCSOC12CTL.bit.ACQPS = ACQPS_Value;
+	AdcRegs.ADCSOC13CTL.bit.ACQPS = ACQPS_Value;
+	AdcRegs.ADCSOC14CTL.bit.ACQPS = ACQPS_Value;
+	AdcRegs.ADCSOC15CTL.bit.ACQPS = ACQPS_Value;
+	EDIS;
+	scia_msg(clearScreen);
+        printMenu(adcMenu, 4);
+        read = scia_read();
+	while (SciaRegs.SCIFFRX.bit.RXFFST == 0) {
+		//do stuff
+		scia_PrintLF();
 		scia_msg(clearScreen);
-	       // printMenu(pwmMenu, 6);
-		read = scia_read();
-		switch (read) {
-                	case 0x30:
-                        	breakOutOfLoop = 1;
-                        	break;
-		}
+		//scia_msg(menuDivider);
+		//scia_PrintLF();
+		// Configure the ADC to sample the temperature sensor
+EALLOW;
+AdcRegs.ADCCTL1.bit.TEMPCONV = 0; //Connect A5 - temp sensor
+AdcRegs.ADCSOC0CTL.bit.CHSEL = 14; //Set SOC0 to sample A5
+AdcRegs.ADCSOC1CTL.bit.CHSEL = 14; //Set SOC1 to sample A5
+AdcRegs.ADCSOC0CTL.bit.ACQPS = 6; //Set SOC0 ACQPS to 7 ADCCLK
+AdcRegs.ADCSOC1CTL.bit.ACQPS = 6; //Set SOC1 ACQPS to 7 ADCCLK
+AdcRegs.INTSEL1N2.bit.INT1SEL = 1; //Connect ADCINT1 to EOC1
+AdcRegs.INTSEL1N2.bit.INT1E = 1; //Enable ADCINT1
+EDIS;
+// Sample the temperature sensor
+AdcRegs.ADCSOCFRC1.all = 0xFF; //Sample temp sensor
+while(AdcRegs.ADCINTFLG.bit.ADCINT1 == 0){} //Wait for ADCINT1
+AdcRegs.ADCINTFLGCLR.bit.ADCINT1 = 1; //Clear ADCINT1
+valueADC = AdcResult.ADCRESULT1; //Get temp sensor sample result
+		snprintf(adcPrint, 20, "%d\r\n", valueADC);
+		scia_msg(adcPrint);
+		DELAY_US(32000);
+		DELAY_US(32000);
+		DELAY_US(32000);
+                DELAY_US(32000);
+		DELAY_US(32000);
+                DELAY_US(32000);
+                DELAY_US(32000);
+                DELAY_US(32000);
 	}
+	return;
 }
 int pwmStatus = 0;
 void doPwmMenu(void) {
@@ -120,7 +188,7 @@ void doPwmMenu(void) {
                                 break;
 			case 0x31: //enable/disable pwm
 				if (pwmStatus == 0) {
-					epwmInit();
+					epwmInit(epwmFreq, dutyCycleMult);
 					pwmStatus = 1;
                				//pwmString2[] = "1) Toggle PWM:           OFF";
 					pwmString2[25] = ' ';
@@ -146,11 +214,13 @@ void doPwmMenu(void) {
 					int i = 0;
 					int mult = 10;
 					int newDutyCycleMult = 0;
+					char digits[] = "00";
 					scia_msg(dutyCyclePrompt);
 					while (i < 2) {
 						read = scia_read();
 						if (read < 0x3A || read > 0x2F) {
 							newDutyCycleMult = newDutyCycleMult + (mult*(read-48));
+							digits[i] = read;
 							i++;
 							mult = mult - 9;
 						} 
@@ -160,10 +230,14 @@ void doPwmMenu(void) {
 							break;
 						}
 					}
-					if (i) {
-						i = ((epwmFreq/100)*newDutyCycleMult);
-						EPwm1Regs.CMPA.half.CMPA = (1500-i); // adjust duty for output EPWM1A
-       						EPwm2Regs.CMPA.half.CMPA = (1500-i);	
+					if (i != 0) {
+						dutyCycleMult = newDutyCycleMult;
+						//"2) Duty Cycle:           50% ";
+						pwmString3[25] = digits[0];
+						pwmString3[26] = digits[1];
+						i = ((epwmFreq/100)*dutyCycleMult);
+						EPwm1Regs.CMPA.half.CMPA = (epwmFreq-i); // adjust duty for output EPWM1A
+       						EPwm2Regs.CMPA.half.CMPA = (epwmFreq-i);	
 					}
 				}
 				else {
@@ -357,14 +431,14 @@ void scia_PrintLF( void )
         scia_msg("\r\n");
 }
 
-void epwmInit(void) {
+void epwmInit(int freq, int duty) {
 	//InitGpio();
   	InitEPwmGpio();
 //	GpioCtrlRegs.GPADIR.bit.GPIO0 = 1;
 //	GpioCtrlRegs.GPADIR.bit.GPIO1 = 1;
 //	GpioCtrlRegs.GPADIR.bit.GPIO3 = 1;
 	// EPWM Module 1 config
-	EPwm1Regs.TBPRD = 1500; // Period = 1500 TBCLK counts
+	EPwm1Regs.TBPRD = freq; // Period = 1500 TBCLK counts
 	EPwm1Regs.TBPHS.half.TBPHS = 0; // Set Phase register to zero
 	EPwm1Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN; // Symmetrical mode
 	EPwm1Regs.TBCTL.bit.PHSEN = TB_DISABLE; // Master module
@@ -381,7 +455,7 @@ void epwmInit(void) {
 	EPwm1Regs.DBFED = 20; // FED = 20 TBCLKs
 	EPwm1Regs.DBRED = 20; // RED = 20 TBCLKs
 	// EPWM Module 2 config
-	EPwm2Regs.TBPRD = 1500; // Period = 1500 TBCLK counts
+	EPwm2Regs.TBPRD = freq; // Period = 1500 TBCLK counts
 	EPwm2Regs.TBPHS.half.TBPHS = 300; // Phase = 300/1500 * 360 = 120 deg
 	EPwm2Regs.TBCTL.bit.CTRMODE = TB_COUNT_UPDOWN; // Symmetrical mode
 	EPwm2Regs.TBCTL.bit.PHSEN = TB_ENABLE; // Slave module
@@ -399,7 +473,7 @@ void epwmInit(void) {
 	EPwm2Regs.DBFED = 20; // FED = 20 TBCLKs
 	EPwm2Regs.DBRED = 20; // RED = 20 TBCLKs
 
-	EPwm1Regs.CMPA.half.CMPA = (1500 / 2); // adjust duty for output EPWM1A
-	EPwm2Regs.CMPA.half.CMPA = (1500 / 2); // adjust duty for output EPWM2A
+	EPwm1Regs.CMPA.half.CMPA = (freq / duty); // adjust duty for output EPWM1A
+	EPwm2Regs.CMPA.half.CMPA = (freq / duty); // adjust duty for output EPWM2A
 	return;
 }
